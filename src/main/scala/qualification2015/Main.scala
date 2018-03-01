@@ -73,11 +73,11 @@ object Main extends App {
     }
 
     def save(): Path = {
-      println("Score: " + output.score(input))
-      println(output.toString)
+      println("Score: " + score(input))
+      println(this.toString)
       val timeFormat = new SimpleDateFormat("HH-mm-ss")
       val suffix = timeFormat.format(new java.util.Date())
-      output.toFile(s"output/$prefix/heuristic-hao-$suffix.out")
+      this.toFile(s"output/$prefix/heuristic-hao-$suffix.out")
     }
   }
 

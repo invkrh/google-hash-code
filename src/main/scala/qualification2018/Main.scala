@@ -10,12 +10,13 @@ import scala.io.Source
 object Main extends App {
 
   val prefix = "qualification2018"
+  val problem: String = ???
 
   // Data structure
   case class Input()
   object Input {
     def apply(path: String): Input = {
-      val lines = Source.fromResource(s"$prefix/example.in").getLines
+      val lines = Source.fromResource(path).getLines
       ???
     }
   }
@@ -38,7 +39,7 @@ object Main extends App {
     }
   }
 
-  val problem: String = ???
+
   val input = Input(s"$prefix/$problem.in")
 
   // TODO: Fill solution
