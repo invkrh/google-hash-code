@@ -131,10 +131,7 @@ object Main extends App {
 //      cut((0, 0), size, acc) ::: acc
 //  }
   println("--------------------")
-  println(cut((0, 0), (3, 1), List(
-    Slice(0,0,2,1),
-    Slice(0,3,2,4)
-  )))
+  println(cut((0, 0), (3, 1), List(Slice(0, 0, 2, 1), Slice(0, 3, 2, 4))))
 
   // Heuristic
 //  val solution: Solution =

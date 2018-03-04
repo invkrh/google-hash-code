@@ -37,27 +37,49 @@ object Main extends App {
     var currentRide: Option[Ride] = None
     var currentRideEndTime = 0
 
-    def dist2Start(r: Ride): Int = abs(posX - r.a) + abs(posY - r.b)
+    def abs(v: Int) = if (v < 0) -v else v
+
+    def dist2Start(r: Ride): Int = {
+      abs(posX - r.a) + abs(posY - r.b)
+    }
 
     def computeROI(t: Int, r: Ride): Double = {
-      if (finishTime(t, r) > r.f) 0d
+      if (finishTime(t, r) > r.f) Double.NegativeInfinity // can not finish
       else { // can finish before f
-        val value = r.dist + bonus(t, r)
-        val cost = if (t + this.dist2Start(r) <= r.s) {
-//           r.s - t // general case
-          val waitTime = 1000 * (r.s - (t + this.dist2Start(r))) // penalize wait time
-          waitTime + this.dist2Start(r)
+        val distToStart = this.dist2Start(r)
+        val waitTime = r.s - (t + distToStart) // penalize wait time
+        val bonus = if (t + distToStart <= r.s) input.B else 0
+
+        val value = r.dist + bonus
+        val cost = if (t + distToStart <= r.s) {
+//          r.s - t + distToStart + r.dist // general case
+          val waitTime = 1000 * (r.s - (t + distToStart)) // penalize wait time
+          waitTime + distToStart + r.dist
         } else {
-          this.dist2Start(r)
+          distToStart + r.dist
         }
-        value / cost.toDouble
+        value - cost.toDouble
+        //        bonus - waitTime - distToStart
       }
+    }
+
+    def bestRide(t: Int): (Ride, Double) = {
+      var bestROI = Double.NegativeInfinity
+      var bestRide = input.rides.head
+      for (r <- input.rides) {
+        val roi = computeROI(t, r)
+        if (roi > bestROI) {
+          bestROI = roi
+          bestRide = r
+        }
+      }
+      (bestRide, bestROI)
     }
 
     def selectRide(t: Int): Unit = {
       if (input.rides.nonEmpty) {
-        val ride = input.rides.maxBy(r => computeROI(t, r))
-        if (computeROI(t, ride) != 0) {
+        val (ride, roi) = bestRide(t)
+        if (roi != Double.NegativeInfinity) {
           input.rides -= ride
           this.ridesTaken.append(ride)
           this.currentRide = Some(ride)
@@ -67,23 +89,25 @@ object Main extends App {
       }
     }
 
-    def bonus(t: Int, r: Ride): Int = {
-      if (t + this.dist2Start(r) <= r.s) input.B else 0
-    }
-
     def finishTime(t: Int, r: Ride): Int = {
-      if (t + dist2Start(r) <= r.s) {
+      val timeToPick = dist2Start(r)
+      if (t + timeToPick <= r.s) {
         r.dist + r.s
       } else {
-        t + r.dist + dist2Start(r)
+        t + r.dist + timeToPick
       }
+    }
+
+    def bonus(t: Int, r: Ride): Int = {
+      if (t + this.dist2Start(r) <= r.s) input.B else 0
     }
 
     def update(t: Int): Unit = {
       currentRide match {
         case Some(ride) =>
           if (t == currentRideEndTime) {
-            this.currentScore += ride.dist
+//            val bonus = if (t - ride.dist > ride.s) 0 else input.B
+            this.currentScore += ride.dist // + bonus
             currentRide = None
             this.posX = ride.x
             this.posY = ride.y
@@ -119,22 +143,25 @@ object Main extends App {
   var problem = "a_example"
   var input = Input(s"$prefix/$problem.in")
 
+  // TODO: improve d_metropolis
   val finalScores =
     List("a_example", "b_should_be_easy", "c_no_hurry", "d_metropolis", "e_high_bonus") map { p =>
-//  List("b_should_be_easy") foreach { p =>
       problem = p
       input = Input(s"$prefix/$problem.in")
       val vehicles = Array.fill(input.F)(Vehicle())
+
+      val start = System.currentTimeMillis()
       for {
-        t <- 0 until input.T
+        t <- 0 until input.T // if { println(t); true }
         v <- vehicles
       } {
         v.update(t)
       }
+      val solutionTime = (System.currentTimeMillis() - start) / 1000d
       val output: Output = Output(vehicles)
       output.save()
-      println(s"Rides missed: ${input.rides.size} (${input.rides.size / input.R.toDouble})")
       println("Ride points missed: " + input.rides.map(_.dist).sum)
+      println(s"Solution time: $solutionTime seconds")
       println
       output.score()
     }
@@ -143,9 +170,9 @@ object Main extends App {
 }
 
 /**
-Score (a_example): 10
-Rides missed: 0 (0.0)
-Ride points missed: 0
+Score (a_example): 4
+Rides missed: 1 (0.3333333333333333)
+Ride points missed: 4
 
 Score (b_should_be_easy): 176877
 Rides missed: 6 (0.0075)
@@ -155,13 +182,13 @@ Score (c_no_hurry): 15790930
 Rides missed: 1247 (0.4156666666666667)
 Ride points missed: 950043
 
-Score (d_metropolis): 10643137
-Rides missed: 4187 (0.4187)
-Ride points missed: 3608392
+Score (d_metropolis): 11207234
+Rides missed: 3582 (0.3582)
+Ride points missed: 3045947
 
 Score (e_high_bonus): 21465945
 Rides missed: 16 (0.010666666666666666)
 Ride points missed: 12398
 
-Final score: 48076899
+Final score: 48640990
  */
