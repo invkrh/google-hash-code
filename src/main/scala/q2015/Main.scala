@@ -1,4 +1,4 @@
-package qualification2015
+package q2015
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}

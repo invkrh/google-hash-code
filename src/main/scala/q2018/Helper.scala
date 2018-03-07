@@ -1,4 +1,4 @@
-package qualification2018
+package q2018
 
 object Helper {
   def probe(f: => Unit): Unit = {
