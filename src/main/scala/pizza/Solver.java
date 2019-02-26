@@ -1,8 +1,5 @@
 package pizza;
 
-import template.Input;
-import template.Output;
-
 public class Solver {
 
   /*
