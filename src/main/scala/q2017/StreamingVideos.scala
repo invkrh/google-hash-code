@@ -9,10 +9,7 @@ import scala.io.Source
  * Step 1: Read statement, define IO interfaces and push (30 mins)
  */
 // Input
-case class EndPoint(
-  cacheLatency: java.util.Map[Integer, Integer],
-  videoRequestNumber: java.util.Map[Integer, Integer]
-)
+case class EndPoint(cacheLatency: Array[Int], videoRequestNumber: Array[Int])
 
 case class Input(v: Int, e: Int, r: Int, c: Int, x: Int, endPoints: Array[EndPoint])
 object Input {
@@ -22,12 +19,13 @@ object Input {
    */
   def apply(path: String): Input = {
     val lines = Source.fromResource(path).getLines
+    // val Array(v, e, r, c, x) = lines.next().split(" ").map(_.toInt)
     ???
   }
 }
 
 // Output
-case class Output(cache2videos: java.util.Map[Int, Array[Integer]]) {
+case class Output(cache2videos: java.util.Map[Integer, Array[Integer]]) {
   override def toString: String = ???
   def save(path: String): Path =
     Files.write(Paths.get(path), this.toString.getBytes(StandardCharsets.UTF_8))
