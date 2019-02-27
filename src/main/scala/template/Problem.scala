@@ -38,21 +38,39 @@ object Problem extends App {
     ???
   }
 
-  def run(fileName: String): Output = {
+  /**
+   *  Optional
+   */
+  def validate(input: Input, output: Output): Boolean = {
+    ???
+  }
 
-    val input = Input(s"$basePath/$fileName")
+  /**
+   *  Optional
+   */
+  def computeScore(input: Input, output: Output): Int = {
+    ???
+  }
+
+  def run(fileName: String): Unit = {
+
+    val input = Input(s"$basePath/$fileName.in")
+    println(input)
 
     // Java solver
-    Solver.solve(input)
+    val output = Solver.solve(input)
 
     // Scala solver
-    // solve(input)
+    // val output = solve(input)
+
+    val score = computeScore(input, output)
+
+    println(s"$fileName = " + score)
+    output.save(s"output/$basePath/$fileName.out")
   }
 
   /**
    * Step 4: Upload output files to gain points
    */
-  List("???", "???", "???", "???", "???", "???") foreach { fileName =>
-    run(fileName + ".in").save(s"output/$basePath/$fileName.out")
-  }
+  List() foreach run
 }
