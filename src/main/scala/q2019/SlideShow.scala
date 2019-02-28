@@ -19,25 +19,32 @@ object Input {
    */
   def apply(path: String): Input = {
     val lines = Source.fromResource(path).getLines
-    ???
+    val n = lines.next().toInt
+    val photos = new Array[Photo](n)
+    for (i <- 0 until n) {
+      val tokens = lines.next().split(" ")
+      val dir = tokens(0).toCharArray.head
+      photos(i) = Photo(dir, tokens.drop(2))
+    }
+    new Input(photos)
   }
 }
 
 // Output
-case class Output(slides: Array[Array[String]]) {
-  override def toString: String = ???
+case class Output(slides: Array[Array[Int]]) {
+  override def toString: String = slides.size + "\n" + slides.map(_.mkString(" ")).mkString("\n")
   def save(path: String): Path =
     Files.write(Paths.get(path), this.toString.getBytes(StandardCharsets.UTF_8))
 }
 
-object Problem extends App {
+object SlideShow extends App {
   val basePath = "q2019"
 
   /**
    * Step 3b: Implement the second solution (should be different) and validate with real data
    */
   def solve(input: Input): Output = {
-    ???
+    Output(Array(Array(0), Array(3), Array(1, 2)))
   }
 
   /**
@@ -73,7 +80,12 @@ object Problem extends App {
   /**
    * Step 4: Upload output files to gain points
    */
-  val fileList = List("a_example")
+  val fileList = List(
+    "a_example",
+    "b_lovely_landscapes",
+    "c_memorable_moments",
+    "d_pet_pictures",
+    "e_shiny_selfies")
   val dataSet = fileList.map(fileName => (fileName, Input(s"$basePath/$fileName.txt"))).toMap
   fileList foreach run
 }
