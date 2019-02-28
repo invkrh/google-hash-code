@@ -54,14 +54,13 @@ object Problem extends App {
 
   def run(fileName: String): Unit = {
 
-    val input = Input(s"$basePath/$fileName.in")
-    println(input)
+    val input = dataSet(fileName)
 
     // Java solver
-    val output = Solver.solve(input)
+    // val output = Solver.solve(input)
 
     // Scala solver
-    // val output = solve(input)
+    val output = solve(input)
 
     val score = computeScore(input, output)
 
@@ -72,5 +71,7 @@ object Problem extends App {
   /**
    * Step 4: Upload output files to gain points
    */
-  List() foreach run
+  val fileList = List("example")
+  val dataSet = fileList.map(fileName => (fileName, Input(s"$basePath/$fileName.in"))).toMap
+  fileList foreach run
 }
