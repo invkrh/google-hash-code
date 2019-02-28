@@ -4,7 +4,6 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}
 import java.util
 
-import scala.collection.mutable.ArrayBuffer
 import scala.io.Source
 
 /**
@@ -12,20 +11,18 @@ import scala.io.Source
  */
 // Input
 case class EndPoint(
-  ld: Int,
-  cacheLatency: Array[Int],
-  videoRequestNumber: java.util.Map[Integer, Integer]
-)
+    ld: Int,
+    cacheLatency: Array[Int],
+    videoRequestNumber: java.util.Map[Integer, Integer])
 
 case class Input(
-  v: Int,
-  e: Int,
-  r: Int,
-  c: Int,
-  x: Int,
-  videoSizes: Array[Int],
-  endPoints: Array[EndPoint]
-)
+    v: Int,
+    e: Int,
+    r: Int,
+    c: Int,
+    x: Int,
+    videoSizes: Array[Int],
+    endPoints: Array[EndPoint])
 
 object Input {
 
@@ -95,8 +92,7 @@ object StreamingVideas extends App {
 
   def run(fileName: String): Unit = {
 
-    val input = Input(s"$basePath/$fileName.in")
-    println(input)
+    val input = dataSet(fileName)
 
     // Java solver
     // val output = Solver.solve(input)
@@ -113,5 +109,7 @@ object StreamingVideas extends App {
   /**
    * Step 4: Upload output files to gain points
    */
-  List("example") foreach run
+  val fileList = List("example")
+  val dataSet = fileList.map(fileName => (fileName, Input(s"$basePath/$fileName.in"))).toMap
+  fileList foreach run
 }
