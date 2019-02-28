@@ -2,6 +2,7 @@ package q2019
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}
+import java.util
 
 import scala.collection.mutable.ArrayBuffer
 import scala.io.Source
@@ -10,8 +11,9 @@ import scala.io.Source
  * Step 1: Read statement, define IO interfaces and push (30 mins)
  */
 // Input
-case class Photo(id: Int, dir: Char, tags: Array[String]) {
+case class Photo(id: Int, dir: Char, tags: Set[String]) {
   override def toString: String = dir + " " + tags.size + " " + tags.mkString(" ")
+  // def toSlide: Slide = if (dir == 'H') Slide(Array(this)) else throw new Exception("vertical")
 }
 case class Input(photos: Array[Photo]) {
   override def toString: String = photos.size + "\n" + photos.mkString("\n")
@@ -29,7 +31,7 @@ object Input {
     for (i <- 0 until n) {
       val tokens = lines.next().split(" ")
       val dir = tokens(0).toCharArray.head
-      photos(i) = Photo(i, dir, tokens.drop(2))
+      photos(i) = Photo(i, dir, tokens.drop(2).toSet)
     }
     new Input(photos)
   }
@@ -37,9 +39,20 @@ object Input {
 
 // Output
 case class Slide(photos: Array[Photo]) {
-  override def toString: String = photos.map(_.id).mkString("_")
+  override def toString: String = photos.map(_.id).mkString(" ")
   def tags: Set[String] = photos.flatMap(_.tags).toSet
 }
+
+object Slide {
+  def apply(a: Photo, b: Photo): Slide = {
+    Slide(Array(a, b))
+  }
+
+  def apply(a: Photo): Slide = {
+    Slide(Array(a))
+  }
+}
+
 case class Output(slides: Array[Slide]) {
   override def toString: String = slides.size + "\n" + slides.map(_.toString).mkString("\n")
   def save(path: String): Path =
@@ -51,15 +64,22 @@ object SlideShow extends App {
 
   import math._
 
-  def score(a: Slide, b: Slide) = {
-    val left = a.tags.diff(b.tags).size
-    val mid = a.tags.intersect(b.tags).size
-    val right = b.tags.diff(a.tags).size
+  def score(a: Set[String], b: Set[String]) = {
+    val left = a.diff(b).size
+    val mid = a.intersect(b).size
+    val right = b.diff(a).size
     min(min(left, mid), right)
   }
 
-  def pick(last: Slide, pool: Set[Slide]): Slide = {
-    pool.maxBy()
+  def pickH(last: Slide, pool: Set[Photo]): Slide = {
+    val photo = pool.maxBy(p => score(last.tags, p.tags))
+    Slide(photo)
+  }
+
+  def pickV(last: Slide, pool: Set[Photo]): Slide = {
+    val a = pool.maxBy(p => score(last.tags, p.tags))
+    val b = (pool - a).maxBy(p => score(a.tags, p.tags))
+    Slide(a, b)
   }
 
   /**
@@ -68,16 +88,25 @@ object SlideShow extends App {
   def solve(input: Input): Output = {
     val (hor, ver) = input.photos.partition(_.dir == 'H')
     val horSorted = hor.sortBy(-_.tags.size)
-    val verSorted = ver.sortBy(-_.tags.size)
 
-    val res = new ArrayBuffer[Array[Photo]]()
+    val res = new ArrayBuffer[Slide]()
 
-    def func(last: Slide, hor: Set[Photo], ver: Set[Photo]) = {}
+    def func(last: Slide, hor: Set[Photo], ver: Set[Photo]): Unit = {
+      res.append(last)
 
-    func(Slide(res.head), hor.tail.toSet, ver.toSet)
-    println(horSorted.toList)
-    println(verSorted.toList)
-    Output(Array(Slide(Array())))
+      if (hor.nonEmpty) {
+        val next = pickH(last, hor)
+        //println(next.photos.map(_.id).toList)
+        func(next, hor - next.photos.head, ver)
+      } else if (ver.nonEmpty) {
+        val next = pickV(last, ver)
+        func(next, hor, ver - next.photos.head - next.photos.last)
+      }
+    }
+
+    func(Slide(horSorted.head), horSorted.tail.toSet, ver.toSet)
+
+    Output(res.toArray)
   }
 
   /**
@@ -97,7 +126,7 @@ object SlideShow extends App {
   def run(fileName: String): Unit = {
 
     val input = dataSet(fileName)
-    println(input)
+    // println(input)
 
     // Java solver
     // val output = Solver.solve(input)
@@ -116,10 +145,10 @@ object SlideShow extends App {
    */
   // format:off
   val fileList = List(
-    "a_example"
-//    "b_lovely_landscapes",
+//    "a_example"
+    "b_lovely_landscapes"
 //    "c_memorable_moments",
-//    "d_pet_pictures",
+// "d_pet_pictures",
 //    "e_shiny_selfies"
   )
   val dataSet = fileList.map(fileName => (fileName, Input(s"$basePath/$fileName.txt"))).toMap
