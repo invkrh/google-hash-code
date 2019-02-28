@@ -9,7 +9,9 @@ import scala.io.Source
  * Step 1: Read statement, define IO interfaces and push (30 mins)
  */
 // Input
-case class Input()
+case class Photo(dir: Char, tags: Array[String])
+case class Input(photos: Array[Photo])
+
 object Input {
 
   /**
@@ -22,7 +24,7 @@ object Input {
 }
 
 // Output
-case class Output() {
+case class Output(slides: Array[Array[String]]) {
   override def toString: String = ???
   def save(path: String): Path =
     Files.write(Paths.get(path), this.toString.getBytes(StandardCharsets.UTF_8))
@@ -71,7 +73,7 @@ object Problem extends App {
   /**
    * Step 4: Upload output files to gain points
    */
-  val fileList = List("example")
-  val dataSet = fileList.map(fileName => (fileName, Input(s"$basePath/$fileName.in"))).toMap
+  val fileList = List("a_example")
+  val dataSet = fileList.map(fileName => (fileName, Input(s"$basePath/$fileName.txt"))).toMap
   fileList foreach run
 }
