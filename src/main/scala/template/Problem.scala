@@ -49,7 +49,7 @@ object Problem extends App {
    *  Optional
    */
   def computeScore(input: Input, output: Output): Int = {
-    ???
+    0
   }
 
   def run(fileName: String): Unit = {
