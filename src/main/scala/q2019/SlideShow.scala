@@ -3,14 +3,19 @@ package q2019
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}
 
+import scala.collection.mutable.ArrayBuffer
 import scala.io.Source
 
 /**
  * Step 1: Read statement, define IO interfaces and push (30 mins)
  */
 // Input
-case class Photo(dir: Char, tags: Array[String])
-case class Input(photos: Array[Photo])
+case class Photo(id: Int, dir: Char, tags: Array[String]) {
+  override def toString: String = dir + " " + tags.size + " " + tags.mkString(" ")
+}
+case class Input(photos: Array[Photo]) {
+  override def toString: String = photos.size + "\n" + photos.mkString("\n")
+}
 
 object Input {
 
@@ -24,15 +29,19 @@ object Input {
     for (i <- 0 until n) {
       val tokens = lines.next().split(" ")
       val dir = tokens(0).toCharArray.head
-      photos(i) = Photo(dir, tokens.drop(2))
+      photos(i) = Photo(i, dir, tokens.drop(2))
     }
     new Input(photos)
   }
 }
 
 // Output
-case class Output(slides: Array[Array[Int]]) {
-  override def toString: String = slides.size + "\n" + slides.map(_.mkString(" ")).mkString("\n")
+case class Slide(photos: Array[Photo]) {
+  override def toString: String = photos.map(_.id).mkString("_")
+  def tags: Set[String] = photos.flatMap(_.tags).toSet
+}
+case class Output(slides: Array[Slide]) {
+  override def toString: String = slides.size + "\n" + slides.map(_.toString).mkString("\n")
   def save(path: String): Path =
     Files.write(Paths.get(path), this.toString.getBytes(StandardCharsets.UTF_8))
 }
@@ -40,11 +49,35 @@ case class Output(slides: Array[Array[Int]]) {
 object SlideShow extends App {
   val basePath = "q2019"
 
+  import math._
+
+  def score(a: Slide, b: Slide) = {
+    val left = a.tags.diff(b.tags).size
+    val mid = a.tags.intersect(b.tags).size
+    val right = b.tags.diff(a.tags).size
+    min(min(left, mid), right)
+  }
+
+  def pick(last: Slide, pool: Set[Slide]): Slide = {
+    pool.maxBy()
+  }
+
   /**
    * Step 3b: Implement the second solution (should be different) and validate with real data
    */
   def solve(input: Input): Output = {
-    Output(Array(Array(0), Array(3), Array(1, 2)))
+    val (hor, ver) = input.photos.partition(_.dir == 'H')
+    val horSorted = hor.sortBy(-_.tags.size)
+    val verSorted = ver.sortBy(-_.tags.size)
+
+    val res = new ArrayBuffer[Array[Photo]]()
+
+    def func(last: Slide, hor: Set[Photo], ver: Set[Photo]) = {}
+
+    func(Slide(res.head), hor.tail.toSet, ver.toSet)
+    println(horSorted.toList)
+    println(verSorted.toList)
+    Output(Array(Slide(Array())))
   }
 
   /**
@@ -64,6 +97,7 @@ object SlideShow extends App {
   def run(fileName: String): Unit = {
 
     val input = dataSet(fileName)
+    println(input)
 
     // Java solver
     // val output = Solver.solve(input)
@@ -80,12 +114,15 @@ object SlideShow extends App {
   /**
    * Step 4: Upload output files to gain points
    */
+  // format:off
   val fileList = List(
-    "a_example",
-    "b_lovely_landscapes",
-    "c_memorable_moments",
-    "d_pet_pictures",
-    "e_shiny_selfies")
+    "a_example"
+//    "b_lovely_landscapes",
+//    "c_memorable_moments",
+//    "d_pet_pictures",
+//    "e_shiny_selfies"
+  )
   val dataSet = fileList.map(fileName => (fileName, Input(s"$basePath/$fileName.txt"))).toMap
   fileList foreach run
+  // format: on
 }
