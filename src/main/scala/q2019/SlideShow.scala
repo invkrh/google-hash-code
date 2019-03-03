@@ -2,28 +2,20 @@ package q2019
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}
-import java.util
 
 import scala.collection.mutable.ArrayBuffer
 import scala.io.Source
+import scala.util.Random
 
-/**
- * Step 1: Read statement, define IO interfaces and push (30 mins)
- */
 // Input
 case class Photo(id: Int, dir: Char, tags: Set[String]) {
   override def toString: String = dir + " " + tags.size + " " + tags.mkString(" ")
-  // def toSlide: Slide = if (dir == 'H') Slide(Array(this)) else throw new Exception("vertical")
 }
 case class Input(photos: Array[Photo]) {
   override def toString: String = photos.size + "\n" + photos.mkString("\n")
 }
 
 object Input {
-
-  /**
-   * Step 2b: Implement IO interfaces, check parsing and output format and push (30 mins)
-   */
   def apply(path: String): Input = {
     val lines = Source.fromResource(path).getLines
     val n = lines.next().toInt
@@ -38,23 +30,8 @@ object Input {
 }
 
 // Output
-case class Slide(photos: Array[Photo]) {
-  override def toString: String = photos.map(_.id).mkString(" ")
-  def tags: Set[String] = photos.flatMap(_.tags).toSet
-}
-
-object Slide {
-  def apply(a: Photo, b: Photo): Slide = {
-    Slide(Array(a, b))
-  }
-
-  def apply(a: Photo): Slide = {
-    Slide(Array(a))
-  }
-}
-
-case class Output(slides: Array[Slide]) {
-  override def toString: String = slides.size + "\n" + slides.map(_.toString).mkString("\n")
+case class Output(slides: Array[Array[Int]]) {
+  override def toString: String = slides.length + "\n" + slides.map(_.mkString(" ")).mkString("\n")
   def save(path: String): Path =
     Files.write(Paths.get(path), this.toString.getBytes(StandardCharsets.UTF_8))
 }
@@ -71,87 +48,196 @@ object SlideShow extends App {
     min(min(left, mid), right)
   }
 
-  def pickH(last: Slide, pool: Set[Photo]): Slide = {
-    val photo = pool.maxBy(p => score(last.tags, p.tags))
-    Slide(photo)
+  def time[T](action: => T): T = {
+    val start = System.currentTimeMillis()
+    val res = action
+    println("Time = " + (System.currentTimeMillis() - start) + " ms")
+    res
   }
 
-  def pickV(last: Slide, pool: Set[Photo]): Slide = {
-    val a = pool.maxBy(p => score(last.tags, p.tags))
-    val b = (pool - a).maxBy(p => score(a.tags, p.tags))
-    Slide(a, b)
-  }
-
-  /**
-   * Step 3b: Implement the second solution (should be different) and validate with real data
-   */
   def solve(input: Input): Output = {
-    val (hor, ver) = input.photos.partition(_.dir == 'H')
-    val horSorted = hor.sortBy(-_.tags.size)
+    val (h, v) = input.photos.partition(_.dir == 'H')
+    println("Horizontal photos: " + h.length)
+    println("Vertical photos: " + v.length)
+    val cacheH = h.flatMap(p => p.tags.map(t => (t, p.id))).groupBy(_._1).mapValues(_.map(_._2))
+    val cacheV = v.flatMap(p => p.tags.map(t => (t, p.id))).groupBy(_._1).mapValues(_.map(_._2))
 
-    val res = new ArrayBuffer[Slide]()
+    val buff = new ArrayBuffer[Array[Int]]()
+    val used = new Array[Boolean](input.photos.length)
 
-    def func(last: Slide, hor: Set[Photo], ver: Set[Photo]): Unit = {
-      res.append(last)
+    def pickH(tags: Set[String], candidate: Traversable[Int]): Option[(Array[Int], Int)] = {
+      var maxId = -1
+      var maxScore = 0
+      for (photoId <- candidate) {
+        val curScore = score(input.photos(photoId).tags, tags)
+        if (curScore > maxScore) {
+          maxScore = curScore
+          maxId = photoId
+        }
+      }
+      if (maxId == -1) None else Some((Array(maxId), maxScore))
+    }
 
-      if (hor.nonEmpty) {
-        val next = pickH(last, hor)
-        //println(next.photos.map(_.id).toList)
-        func(next, hor - next.photos.head, ver)
-      } else if (ver.nonEmpty) {
-        val next = pickV(last, ver)
-        func(next, hor, ver - next.photos.head - next.photos.last)
+    def pickV(tags: Set[String], candidate: Traversable[Int]): Option[(Array[Int], Int)] = {
+      var maxId = -1
+      var maxScore = 0
+
+      var subMaxId = -1
+      var subMaxScore = 0
+
+      for (photoId <- candidate if photoId != maxId && photoId != subMaxId) {
+        val curScore = score(input.photos(photoId).tags, tags)
+        if (curScore > maxScore) {
+          subMaxId = maxId
+          subMaxScore = maxScore
+          maxId = photoId
+          maxScore = curScore
+        } else if (curScore > subMaxId) {
+          subMaxId = photoId
+          subMaxScore = curScore
+        }
+      }
+
+      if (maxId == -1 || subMaxId == -1) {
+        None
+      } else {
+        val slide = Array(maxId, subMaxId)
+        val slideScore = score(slide.flatMap(id => input.photos(id).tags).toSet, tags)
+        Some((slide, slideScore))
       }
     }
 
-    func(Slide(horSorted.head), horSorted.tail.toSet, ver.toSet)
+    var prevTime = System.currentTimeMillis()
+    def rec(slide: Array[Int]): Unit = {
+      val curTime = System.currentTimeMillis()
+      if (buff.size % 100 == 0) {
+        println(
+          "buffer size = " + buff.size + ", time for 100 slides = " + (curTime - prevTime) + "ms")
+        prevTime = curTime
+      }
 
-    Output(res.toArray)
+      buff.append(slide)
+      slide.foreach(id => used(id) = true)
+      val tags = slide.flatMap(id => input.photos(id).tags).toSet
+
+      val maxCandidate = 2500
+
+      val candidatesH: Traversable[Int] =
+        tags.view
+          .flatMap { tag =>
+            cacheH.get(tag).map(ids => ids.filter(id => !used(id)))
+          }
+          .flatten
+          .take(maxCandidate)
+
+      val candidatesV: Traversable[Int] =
+        tags.view
+          .flatMap { tag =>
+            cacheV.get(tag).map(ids => ids.filter(id => !used(id)))
+          }
+          .flatten
+          .take(maxCandidate)
+
+      (pickH(tags, candidatesH), pickV(tags, candidatesV)) match {
+        case (Some((hSlide, hScore)), Some((vSlide, vScore))) =>
+          if (hScore >= vScore) {
+            rec(hSlide)
+          } else {
+            rec(vSlide)
+          }
+        case (_, Some((vSlide, _))) => rec(vSlide)
+        case (Some((hSlide, _)), _) => rec(hSlide)
+        case _ =>
+      }
+    }
+
+    val rng = new Random(19910903)
+    val init =
+      if (h.nonEmpty && v.nonEmpty) {
+        if (rng.nextBoolean()) {
+          Array(h(rng.nextInt(h.length)).id)
+        } else {
+          Array(v(rng.nextInt(v.length / 2)).id, v(v.length / 2 + rng.nextInt(v.length / 2)).id)
+        }
+      } else if (h.nonEmpty) {
+        Array(h(rng.nextInt(h.length)).id)
+      } else {
+        Array(v(rng.nextInt(v.length / 2)).id, v(v.length / 2 + rng.nextInt(v.length / 2)).id)
+      }
+
+    rec(init)
+    for (photo <- input.photos) {
+      if (!used(photo.id)) {
+        if (photo.dir == 'H') {
+          rec(Array(photo.id))
+        } else {
+          val theOtherId = input.photos.indexWhere(p => p.dir == 'V' && !used(p.id), photo.id + 1)
+          if (theOtherId > 0) {
+            rec(Array(photo.id, theOtherId))
+          }
+        }
+      }
+    }
+
+    Output(buff.toArray)
   }
 
   /**
-   *  Optional
+   *  TODO
    */
-  def validate(input: Input, output: Output): Boolean = {
-    ???
+  def validate(input: Input, output: Output): Unit = {
+    val res = output.slides.zipWithIndex
+      .flatMap {
+        case (photos, rowNumber) => photos.map(pId => (pId, rowNumber))
+      }
+      .groupBy(_._1)
+      .mapValues(_.map(_._2))
+
+    for {
+      (pid, rows) <- res
+    } {
+      if (rows.length > 1) {
+        throw new Exception(s"Error: Photo $pid used at lines ${rows.mkString("[", ",", "]")}")
+      }
+    }
   }
 
-  /**
-   *  Optional
-   */
   def computeScore(input: Input, output: Output): Int = {
-    0
+    var prev = output.slides.head
+    var sum = 0
+    for (slide <- output.slides.tail) {
+      sum += score(
+        prev.flatMap(id => input.photos(id).tags).toSet,
+        slide.flatMap(id => input.photos(id).tags).toSet,
+      )
+      prev = slide
+    }
+    sum
   }
 
-  def run(fileName: String): Unit = {
+  def run(fileName: String): Int = {
 
-    val input = dataSet(fileName)
-    // println(input)
+    val input = Input(s"$basePath/$fileName.txt")
+    val output = time { solve(input) }
 
-    // Java solver
-    // val output = Solver.solve(input)
-
-    // Scala solver
-    val output = solve(input)
+    validate(input, output)
 
     val score = computeScore(input, output)
-
-    println(s"$fileName = " + score)
+    println(s"Score($fileName) = " + score)
     output.save(s"output/$basePath/$fileName.out")
+    score
   }
 
   /**
    * Step 4: Upload output files to gain points
    */
-  // format:off
+  // format: off
   val fileList = List(
 //    "a_example"
-    "b_lovely_landscapes"
-//    "c_memorable_moments",
-// "d_pet_pictures",
+//    "b_lovely_landscapes"
+//    "c_memorable_moments"
+    "d_pet_pictures"
 //    "e_shiny_selfies"
-  )
-  val dataSet = fileList.map(fileName => (fileName, Input(s"$basePath/$fileName.txt"))).toMap
-  fileList foreach run
+  ) foreach run
   // format: on
 }
