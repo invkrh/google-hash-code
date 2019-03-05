@@ -3,6 +3,7 @@ package q2019
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}
 
+import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.io.Source
 import scala.util.Random
@@ -38,6 +39,7 @@ case class Output(slides: Array[Array[Int]]) {
 
 object SlideShow extends App {
   val basePath = "q2019"
+  val rng = new Random(19890118)
 
   import math._
 
@@ -65,7 +67,7 @@ object SlideShow extends App {
     val buff = new ArrayBuffer[Array[Int]]()
     val used = new Array[Boolean](input.photos.length)
 
-    def pickH(tags: Set[String], candidate: Traversable[Int]): Option[(Array[Int], Int)] = {
+    def pickH(tags: Set[String], candidate: mutable.HashSet[Int]): Option[(Array[Int], Int)] = {
       var maxId = -1
       var maxScore = 0
       for (photoId <- candidate) {
@@ -78,7 +80,7 @@ object SlideShow extends App {
       if (maxId == -1) None else Some((Array(maxId), maxScore))
     }
 
-    def pickV(tags: Set[String], candidate: Traversable[Int]): Option[(Array[Int], Int)] = {
+    def pickV(tags: Set[String], candidate: mutable.HashSet[Int]): Option[(Array[Int], Int)] = {
       var maxId = -1
       var maxScore = 0
 
@@ -107,12 +109,40 @@ object SlideShow extends App {
       }
     }
 
+    def takeDistinct(
+        tags: Set[String],
+        cache: Map[String, Array[Int]],
+        n: Int): mutable.HashSet[Int] = {
+      val res = new mutable.HashSet[Int]()
+      for {
+        tag <- rng.shuffle(tags.toSeq) if res.size < n
+        photoIds <- cache
+          .get(tag)
+          .map(ids => rng.shuffle(ids.filter(id => !used(id)).toSeq)) // in case some tags exist in one cache not in the other
+      } {
+        for {
+          id <- photoIds if res.size < n
+        } {
+          res.add(id)
+        }
+      }
+      res
+    }
+
     var prevTime = System.currentTimeMillis()
+    var totalTime = 0L
+    var iteration = 0L
     def rec(slide: Array[Int]): Unit = {
       val curTime = System.currentTimeMillis()
       if (buff.size % 100 == 0) {
+        val delta = curTime - prevTime
+        totalTime += delta
+        iteration += 1
+        val averageTime = "%.2f".format(totalTime.toDouble / iteration).toDouble
         println(
-          "buffer size = " + buff.size + ", time for 100 slides = " + (curTime - prevTime) + "ms")
+          s"Slideshow size = ${buff.size}, " +
+            s"iteration time = $delta ms, " +
+            s"average time = $averageTime ms")
         prevTime = curTime
       }
 
@@ -120,23 +150,13 @@ object SlideShow extends App {
       slide.foreach(id => used(id) = true)
       val tags = slide.flatMap(id => input.photos(id).tags).toSet
 
-      val maxCandidate = 2500
+      val maxCandidate = 4000
 
-      val candidatesH: Traversable[Int] =
-        tags.view
-          .flatMap { tag =>
-            cacheH.get(tag).map(ids => ids.filter(id => !used(id)))
-          }
-          .flatten
-          .take(maxCandidate)
+      val candidatesH = takeDistinct(tags, cacheH, maxCandidate)
+      val candidatesV = takeDistinct(tags, cacheV, maxCandidate)
 
-      val candidatesV: Traversable[Int] =
-        tags.view
-          .flatMap { tag =>
-            cacheV.get(tag).map(ids => ids.filter(id => !used(id)))
-          }
-          .flatten
-          .take(maxCandidate)
+//      println("H candidate size = " + candidatesH.size)
+//      println("V candidate size = " + candidatesV.size)
 
       (pickH(tags, candidatesH), pickV(tags, candidatesV)) match {
         case (Some((hSlide, hScore)), Some((vSlide, vScore))) =>
@@ -151,7 +171,6 @@ object SlideShow extends App {
       }
     }
 
-    val rng = new Random(19910903)
     val init =
       if (h.nonEmpty && v.nonEmpty) {
         if (rng.nextBoolean()) {
@@ -182,9 +201,6 @@ object SlideShow extends App {
     Output(buff.toArray)
   }
 
-  /**
-   *  TODO
-   */
   def validate(input: Input, output: Output): Unit = {
     val res = output.slides.zipWithIndex
       .flatMap {
@@ -232,12 +248,13 @@ object SlideShow extends App {
    * Step 4: Upload output files to gain points
    */
   // format: off
-  val fileList = List(
-//    "a_example"
-//    "b_lovely_landscapes"
-//    "c_memorable_moments"
+  val finalScore = List(
+//    "a_example",
+//    "b_lovely_landscapes",
+//    "c_memorable_moments",
     "d_pet_pictures"
 //    "e_shiny_selfies"
-  ) foreach run
+  ).map(run).sum
   // format: on
+  // println(s"Final Score = $finalScore")
 }
