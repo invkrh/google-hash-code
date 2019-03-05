@@ -67,10 +67,31 @@ object SlideShow extends App {
     val buff = new ArrayBuffer[Array[Int]]()
     val used = new Array[Boolean](input.photos.length)
 
+    def takeDistinct(
+        tags: Set[String],
+        cache: Map[String, Array[Int]],
+        n: Int): mutable.HashSet[Int] = {
+      val res = new mutable.HashSet[Int]()
+      for {
+        tag <- rng.shuffle(tags.toSeq) if res.size < n
+        photoIds <- cache
+          .get(tag)
+          .map(ids => rng.shuffle(ids.filter(id => !used(id)).toSeq)) // in case some tags exist in one cache not in the other
+      } {
+        for {
+          id <- photoIds if res.size < n
+        } {
+          res.add(id)
+        }
+      }
+      res
+    }
+
+    // TODO: use foldLeft to avoid var and make parallel operation deterministic
     def pickH(tags: Set[String], candidate: mutable.HashSet[Int]): Option[(Array[Int], Int)] = {
       var maxId = -1
       var maxScore = 0
-      for (photoId <- candidate) {
+      for (photoId <- candidate.par) {
         val curScore = score(input.photos(photoId).tags, tags)
         if (curScore > maxScore) {
           maxScore = curScore
@@ -87,7 +108,7 @@ object SlideShow extends App {
       var subMaxId = -1
       var subMaxScore = 0
 
-      for (photoId <- candidate if photoId != maxId && photoId != subMaxId) {
+      for (photoId <- candidate.par) {
         val curScore = score(input.photos(photoId).tags, tags)
         if (curScore > maxScore) {
           subMaxId = maxId
@@ -107,26 +128,6 @@ object SlideShow extends App {
         val slideScore = score(slide.flatMap(id => input.photos(id).tags).toSet, tags)
         Some((slide, slideScore))
       }
-    }
-
-    def takeDistinct(
-        tags: Set[String],
-        cache: Map[String, Array[Int]],
-        n: Int): mutable.HashSet[Int] = {
-      val res = new mutable.HashSet[Int]()
-      for {
-        tag <- rng.shuffle(tags.toSeq) if res.size < n
-        photoIds <- cache
-          .get(tag)
-          .map(ids => rng.shuffle(ids.filter(id => !used(id)).toSeq)) // in case some tags exist in one cache not in the other
-      } {
-        for {
-          id <- photoIds if res.size < n
-        } {
-          res.add(id)
-        }
-      }
-      res
     }
 
     var prevTime = System.currentTimeMillis()
@@ -150,13 +151,10 @@ object SlideShow extends App {
       slide.foreach(id => used(id) = true)
       val tags = slide.flatMap(id => input.photos(id).tags).toSet
 
-      val maxCandidate = 4000
+      val maxCandidate = 10000
 
       val candidatesH = takeDistinct(tags, cacheH, maxCandidate)
       val candidatesV = takeDistinct(tags, cacheV, maxCandidate)
-
-//      println("H candidate size = " + candidatesH.size)
-//      println("V candidate size = " + candidatesV.size)
 
       (pickH(tags, candidatesH), pickV(tags, candidatesV)) match {
         case (Some((hSlide, hScore)), Some((vSlide, vScore))) =>
@@ -204,7 +202,20 @@ object SlideShow extends App {
   def validate(input: Input, output: Output): Unit = {
     val res = output.slides.zipWithIndex
       .flatMap {
-        case (photos, rowNumber) => photos.map(pId => (pId, rowNumber))
+        case (slide, rowNumber) =>
+          slide.length match {
+            case 0 => throw new Exception(s"Error: Line $rowNumber is empty")
+            case 1 if input.photos(slide.head).dir == 'V' =>
+              throw new Exception(
+                s"Error: Vertical photos must be used in pairs. Found single vertical photo at line $rowNumber")
+            case 2 if slide.exists(id => input.photos(id).dir == 'H') =>
+              throw new Exception(
+                s"Error: Only vertical photos can be combined. Found horizontal photo at line $rowNumber")
+            case i if i > 2 =>
+              throw new Exception(
+                s"Error: Too many photos: found $i, but should be between 1 and 2 at line $rowNumber")
+            case _ => slide.map(pId => (pId, rowNumber))
+          }
       }
       .groupBy(_._1)
       .mapValues(_.map(_._2))
@@ -218,6 +229,7 @@ object SlideShow extends App {
     }
   }
 
+  // TODO: use foldLeft to avoid var
   def computeScore(input: Input, output: Output): Int = {
     var prev = output.slides.head
     var sum = 0
