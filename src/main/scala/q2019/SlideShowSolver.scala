@@ -75,6 +75,9 @@ class SlideShowSolver(parallelism: Int, showMetricsBySteps: Boolean = false) ext
       s"# shuffle partitions: $parallelism, # CPU cores: $numCPUCores, " +
         s"# batches: ${math.ceil(numBatches).toInt}")
 
+    /**
+     * Hash partition input into  [[parallelism]] blocks
+     */
     val partitions = Array.fill(parallelism)(new ArrayBuffer[Photo])
     for {
       photo <- in.photos
@@ -90,47 +93,43 @@ class SlideShowSolver(parallelism: Int, showMetricsBySteps: Boolean = false) ext
     res
   }
 
-  def solve0(in: In, partitionId: Int): Out = {
+  def solve0(block: In, partitionId: Int): Out = {
+    def buildTagDict(pool: mutable.HashSet[Photo]): Map[String, mutable.HashSet[Photo]] =
+      pool
+        .flatMap(p => p.tags.map(t => (t, p)))
+        .groupBy(_._1)
+        // Note: never use mapValue. Value will be reevaluated every time.
+        .map { case (key, value) => (key, mutable.HashSet() ++ value.map(_._2)) }
 
-    val (h, v) = in.photos.partition(_.orientation == "H")
+    // Partition the block into a pool of vertical photos and a pool of horizontal photos
+    val (hPool, vPool) = (mutable.HashSet() ++ block.photos).partition(_.orientation == "H")
+    // Build the tag dict mapping from tag to a set of vertical and horizontal photos, respectively
+    val hDict: Map[String, mutable.HashSet[Photo]] = buildTagDict(hPool)
+    val vDict: Map[String, mutable.HashSet[Photo]] = buildTagDict(vPool)
 
-    val hPool = mutable.HashSet() ++ h
-    val vPool = mutable.HashSet() ++ v
-
-    val hDict: Map[String, mutable.HashSet[Photo]] = h
-      .flatMap(p => p.tags.map(t => (t, p)))
-      .groupBy(_._1)
-      // Note: never use mapValue. Value will be reevaluated every time.
-      .map { case (key, value) => (key, mutable.HashSet() ++ value.map(_._2)) }
-
-    val vDict: Map[String, mutable.HashSet[Photo]] = v
-      .flatMap(p => p.tags.map(t => (t, p)))
-      .groupBy(_._1)
-      // Note: never use mapValue. Value will be reevaluated every time.
-      .map { case (key, value) => (key, mutable.HashSet() ++ value.map(_._2)) }
-
-//    println("# H photos = " + hPool.size)
-//    println("# H tags = " + hDict.size)
-//    println("# H tags per photo = " + hPool.toList.map(_.tags.size).sum / hPool.size.toDouble)
-//    println("# H photo per tags = " + hDict.values.map(_.size).sum / hDict.size.toDouble)
-//    println("# V photos = " + vPool.size)
-//    println("# V tags = " + vDict.size)
-//    println("# V tags per photo = " + vPool.toList.map(_.tags.size).sum / vPool.size.toDouble)
-//    println("# V photo per tags = " + vDict.values.map(_.size).sum / vDict.size.toDouble)
-
+    // Buffer to hold all the slides which will be packaged and returned as the output
     val slides = new mutable.ArrayBuffer[Slide]()
 
+    /**
+     * Remove the previously used photo from the corresponding pool and the value set of the tag dict
+     * @param photo photo to be removed
+     * @param pool the pool holding unused photos
+     * @param dict the tag dict of which the value containing unused photos
+     */
     def remove(
         photo: Photo,
         pool: mutable.Set[Photo],
         dict: Map[String, mutable.HashSet[Photo]]): Unit = {
-
       pool.remove(photo)
       photo.tags foreach { tag =>
         dict(tag).remove(photo)
       }
     }
 
+    /**
+     * Add the slide to the result and clean up the corresponding pool and tag dict
+     * @param slide the slide which should be appended to the result
+     */
     def appendToResult(slide: Slide): Unit = {
       slides.append(slide)
       slide match {
@@ -142,21 +141,27 @@ class SlideShowSolver(parallelism: Int, showMetricsBySteps: Boolean = false) ext
       }
     }
 
-    def bestPhotoScore(
+    /**
+     * Find the photo maximizing the score and the max score
+     * @param prevTags the tag set of the previous slide
+     * @param candidate a set of photos which have at least one common tag with the previous slide
+     * @param chosen the first photo used for vertical slide
+     */
+    def bestPhotoWithScore(
         prevTags: Set[String],
         candidate: Set[Photo],
         chosen: Option[Photo]): Option[(Photo, Int)] = {
       var maxScore = -1
       var bestPhoto: Photo = null
-      candidate foreach { photo =>
+      candidate foreach { p =>
         val score = chosen match {
-          case Some(p) if photo == p => -1 // ignore the chosen one
-          case Some(p) => transitionScore(prevTags, photo.tags ++ p.tags)
-          case None => transitionScore(prevTags, photo.tags)
+          case Some(v1) if p == v1 => -1 // ignore the chosen one
+          case Some(v1) => transitionScore(prevTags, p.tags ++ v1.tags)
+          case None => transitionScore(prevTags, p.tags)
         }
         if (score > maxScore) {
           maxScore = score
-          bestPhoto = photo
+          bestPhoto = p
         }
       }
       if (maxScore == -1) {
@@ -166,10 +171,14 @@ class SlideShowSolver(parallelism: Int, showMetricsBySteps: Boolean = false) ext
       }
     }
 
+    /**
+     * Find the best horizontal slide among all the candidate photos containing at least one common tag
+     * @param prevTags the tag set of the previous added slide
+     */
     def getBestHorizontalSlide(prevTags: Set[String]): Option[(HorizontalSlide, Int)] = {
       if (hPool.nonEmpty) {
         val candidate = prevTags.flatMap(tag => hDict.getOrElse(tag, Seq()))
-        bestPhotoScore(prevTags, candidate, None).map {
+        bestPhotoWithScore(prevTags, candidate, None).map {
           case (photo, score) => (HorizontalSlide(photo), score)
         }
       } else {
@@ -177,12 +186,16 @@ class SlideShowSolver(parallelism: Int, showMetricsBySteps: Boolean = false) ext
       }
     }
 
+    /**
+     * Find the best vertical slide among all the candidate photos containing at least one common tag
+     * @param prevTags the tag set of the previous added slide
+     */
     def getBestVerticalSlide(prevTags: Set[String]): Option[(VerticalSlide, Int)] = {
       if (vPool.size >= 2) {
         val candidate = prevTags.flatMap(tag => vDict.getOrElse(tag, Seq()))
         for {
-          (left, _) <- bestPhotoScore(prevTags, candidate, None)
-          (right, score) <- bestPhotoScore(prevTags, candidate, Some(left))
+          (left, _) <- bestPhotoWithScore(prevTags, candidate, None)
+          (right, score) <- bestPhotoWithScore(prevTags, candidate, Some(left))
         } yield {
           (VerticalSlide(left, right), score)
         }
@@ -191,8 +204,15 @@ class SlideShowSolver(parallelism: Int, showMetricsBySteps: Boolean = false) ext
       }
     }
 
+    /**
+     * Pick a horizontal slide if there are some horizontal photos unused, otherwise pick a
+     * vertical slide.
+     *
+     * Note: this function is only used when
+     *     - pick first slide
+     *     - pick the next slide when no suitable photos can be found in the candidates
+     */
     def init(): Slide = {
-      // Bootstrap for the first slide
       if (hPool.nonEmpty) {
         HorizontalSlide(hPool.maxBy(_.tags.size))
       } else {
